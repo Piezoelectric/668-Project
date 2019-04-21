@@ -1,0 +1,117 @@
+import time
+import random
+import sys
+
+# basically, in this one we're just going to make sure Join() works.
+
+NUM_INIT_NODE = 7
+DELTA = 1 #time in seconds
+# DELTA also serves as, basically, "round time" or max time for each round.
+# Set this big enough so its much larger than real communication delays 
+#(which are like 0.05 seconds)
+
+class RumorTreeNode: #NOT a DistAlgo process, but native Python code
+    def __init__(self, id = None, val = None, children = [], parent = None):
+        self.id = id
+        self.val = val
+        self.children = children
+        self.parent = parent
+        
+    
+
+class P(process):
+    # ==== SETUP AND HELPERS ====
+    def setup(inputVal, allOtherNodes):
+        #Algorithm parameters:
+        self.active = False
+        self.replyTo = set()
+        self.time_active = -1 #time when p becomes active
+        self.on_going = False #whether there is consensus going on
+        self.val = inputVal #input value of p
+        self.decision = None #no decision value yet
+        self.id_set = set() #set of (id, time) pairs of active processes in p's view
+        self.consensus_set = set() #set of process IDs participating in current consensus
+        
+        
+        #Additional parameters for the purposes of simulation only
+        self.allOtherNodes = allOtherNodes 
+        #allOtherNodes contains the process IDs of all other nodes.
+        #This allows for bcast to other nodes -- paper requires bcast.
+        self.localRandom = random.Random() 
+        #Create a local random number generator
+        #So each processor doesn't share the RNG
+        
+    def run():
+        await(received("Exit Simulation"))
+        #Keep this process alive until main() tells it it can exit
+    
+    def bcast(msg): #Helper method for sending to all other nodes
+        send(msg, to = allOtherNodes) #Check if this actually works; but I think it will based on Lamport example
+
+    def stall():
+    
+        #Manually enforce a constant delay of 1 second or so
+        randWait = localRandom.uniform(0, DELTA)
+        output("DEBUG: RANDWAIT =", randWait)
+        if await(False): pass
+        elif timeout(randWait): pass
+        
+    # def receive(msg = "Calibrate Delta", from_ = x):
+        # #Calibrate delta based on avg realtime on this particular system
+        # #Plus some padded realtime delay
+        # send("Completing the round trip", to=x)
+        
+    # ==== JOIN PROCEDURE ====
+    def receive(msg = "Join Invoked"):
+        time_active = time.time() + 2*DELTA
+        timeDiff = time_active - time.time()
+        bcast( ("Hello", time_active))
+        if await(False): pass
+        elif timeout(timeDiff): pass
+        
+        active = True
+        id_set.add( (self, time_active) ) #Add (self id, time_active)
+        
+        for j in replyTo:
+            send( ("Welcome", self, time_active), to = j)
+            
+        output("DEBUG: Join done", time_active, id_set)
+        
+    def receive(msg = ("Hello", t_q), from_ = q):
+        if active:
+            send( ("Welcome", self, time_active), to=q)
+        else:
+            replyTo.add(q)
+        
+        timeDiff = t_q - time.time()
+        if await(False): pass
+        elif timeout(timeDiff): pass
+        id_set.add( (self, t_q) )
+        
+    def receive(msg = ("welcome", q, t_q), from_ = q):
+        id_set.add( (q, t_q) )
+        
+def main():
+    #Setup nodes
+    procs = new(P, num=NUM_INIT_NODE) #procs is a set() object
+    for p in procs: 
+        setup(p, [0, procs- {p}])
+    start(procs)
+    
+    output("Setting recursion limit")
+    sys.setrecursionlimit(10**6) #Tweak this number
+    
+    #Calibrate delay
+    # startTime = time.time()
+    # target = list(procs)[0]
+    # send("Calibrate Delta", to = target)
+    # await(received("Completing the round trip"))
+    # endTime = time.time()
+    #DELTA = endTime - startTime
+    #output("DEBUG: DELTA=", DELTA)
+    
+    #Test the join operation
+    for proc in list(procs):
+        send("Join Invoked", to=proc)
+    
+    await(False) #Just so simulation doesnt exit
